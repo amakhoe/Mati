@@ -1,0 +1,6 @@
+{
+  "name": "Águas da Manhiça - Sistema de Abastecimento",
+  "description": "Sistema de gestão de clientes, faturamento por metro cúbico e controlo de consumo mensal do posto de abastecimento de água na comunidade da Manhiça.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

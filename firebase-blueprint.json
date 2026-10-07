@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Cliente consumidor de água na comunidade de Manhiça",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 120 },
+        "meterNumber": { "type": "string", "maxLength": 50 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "identityNumber": { "type": "string", "maxLength": 30 },
+        "neighborhood": { "type": "string", "maxLength": 60 },
+        "address": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["active", "inactive", "suspended"] },
+        "joinDate": { "type": "string", "maxLength": 20 },
+        "initialMeterReading": { "type": "number" },
+        "currentMeterReading": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "meterNumber", "neighborhood", "status"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Fatura de água gerada com base no consumo em m³ e preço por metro cúbico",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string", "maxLength": 50 },
+        "clientId": { "type": "string", "maxLength": 100 },
+        "clientName": { "type": "string", "maxLength": 120 },
+        "meterNumber": { "type": "string", "maxLength": 50 },
+        "periodMonth": { "type": "string", "maxLength": 20 },
+        "previousReading": { "type": "number" },
+        "currentReading": { "type": "number" },
+        "consumptionM3": { "type": "number" },
+        "unitPriceM3": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "fixedFee": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "paid", "overdue", "cancelled"] },
+        "readingDate": { "type": "string", "maxLength": 20 },
+        "dueDate": { "type": "string", "maxLength": 20 },
+        "paidAt": { "type": "string", "maxLength": 30 },
+        "paymentMethod": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["invoiceNumber", "clientId", "clientName", "periodMonth", "previousReading", "currentReading", "consumptionM3", "unitPriceM3", "totalAmount", "status"]
+    },
+    "StationConsumption": {
+      "title": "StationConsumption",
+      "description": "Registo mensal de consumo e volume bombeado no posto de abastecimento de água",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "stationId": { "type": "string", "maxLength": 60 },
+        "stationName": { "type": "string", "maxLength": 100 },
+        "periodMonth": { "type": "string", "maxLength": 20 },
+        "initialPumpReading": { "type": "number" },
+        "finalPumpReading": { "type": "number" },
+        "pumpedVolumeM3": { "type": "number" },
+        "operatingHours": { "type": "number" },
+        "energyKwh": { "type": "number" },
+        "chlorineKg": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "recordedAt": { "type": "string" },
+        "recordedBy": { "type": "string" }
+      },
+      "required": ["stationName", "periodMonth", "initialPumpReading", "finalPumpReading", "pumpedVolumeM3"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Configurações gerais do sistema e tarifário de água",
+      "type": "object",
+      "properties": {
+        "defaultUnitPriceM3": { "type": "number" },
+        "fixedMonthlyFee": { "type": "number" },
+        "companyName": { "type": "string", "maxLength": 100 },
+        "companyNuit": { "type": "string", "maxLength": 30 },
+        "companyPhone": { "type": "string", "maxLength": 30 },
+        "companyEmail": { "type": "string", "maxLength": 100 },
+        "communityName": { "type": "string", "maxLength": 100 },
+        "currency": { "type": "string", "maxLength": 10 }
+      }
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Registo de clientes da rede de abastecimento"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Faturas de consumo de água"
+    },
+    "/stationConsumptions/{recordId}": {
+      "schema": { "$ref": "#/entities/StationConsumption" },
+      "description": "Registos mensais de bombeamento e volume dos postos de abastecimento"
+    },
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Configurações do sistema de água"
+    }
+  }
+}

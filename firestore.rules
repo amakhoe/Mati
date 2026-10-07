@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Clientes
+    match /clients/{clientId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && isValidId(clientId);
+    }
+
+    // Faturas
+    match /invoices/{invoiceId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && isValidId(invoiceId);
+    }
+
+    // Consumo Mensal dos Postos de Abastecimento
+    match /stationConsumptions/{recordId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && isValidId(recordId);
+    }
+
+    // Configurações do Sistema
+    match /settings/{settingsId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(settingsId);
+    }
+  }
+}
