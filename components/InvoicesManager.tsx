@@ -11,10 +11,11 @@ import {
   Trash2,
   Coins,
   Droplets,
-  DollarSign,
   Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Invoice, SystemSettings, InvoiceStatus } from '@/types/water-system';
+import { MonthlyReportModal } from '@/components/MonthlyReportModal';
 
 interface InvoicesManagerProps {
   invoices: Invoice[];
@@ -37,6 +38,7 @@ export function InvoicesManager({
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [monthFilter, setMonthFilter] = useState('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // Extract distinct months
   const availableMonths = useMemo(() => {
@@ -83,6 +85,67 @@ export function InvoicesManager({
     }
   };
 
+  // Export CSV handler
+  const handleExportCSV = () => {
+    if (filteredInvoices.length === 0) {
+      alert('Não existem faturas para exportar com os filtros atuais.');
+      return;
+    }
+
+    const headers = [
+      'Nº Fatura',
+      'Cliente',
+      'Nº Contador / Hidrómetro',
+      'Mês de Referência',
+      'Data de Leitura',
+      'Data Limite',
+      'Leitura Anterior (m³)',
+      'Leitura Atual (m³)',
+      'Consumo (m³)',
+      `Preço Unitário / m³ (${settings.currency})`,
+      `Subtotal Consumo (${settings.currency})`,
+      `Taxa Fixa (${settings.currency})`,
+      `Total Faturado (${settings.currency})`,
+      'Estado',
+      'Data de Pagamento',
+      'Método de Pagamento',
+      'Observações',
+    ];
+
+    const rows = filteredInvoices.map((inv) => [
+      `"${inv.invoiceNumber}"`,
+      `"${inv.clientName.replace(/"/g, '""')}"`,
+      `"${inv.meterNumber}"`,
+      `"${inv.periodMonth}"`,
+      `"${inv.readingDate || ''}"`,
+      `"${inv.dueDate || ''}"`,
+      inv.previousReading,
+      inv.currentReading,
+      inv.consumptionM3,
+      inv.unitPriceM3.toFixed(2),
+      inv.subtotal.toFixed(2),
+      inv.fixedFee.toFixed(2),
+      inv.totalAmount.toFixed(2),
+      `"${inv.status === 'paid' ? 'Pago' : inv.status === 'pending' ? 'Pendente' : inv.status}"`,
+      `"${inv.paidAt ? inv.paidAt.substring(0, 10) : ''}"`,
+      `"${inv.paymentMethod || ''}"`,
+      `"${(inv.notes || '').replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const periodLabel = monthFilter === 'ALL' ? 'todas' : monthFilter;
+    const dateLabel = new Date().toISOString().substring(0, 10);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `faturas_aguas_manhica_${periodLabel}_${dateLabel}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Summary of filtered invoices
   const totalVolume = filteredInvoices.reduce((a, b) => a + (b.consumptionM3 || 0), 0);
   const totalAmount = filteredInvoices.reduce((a, b) => a + (b.totalAmount || 0), 0);
@@ -93,7 +156,7 @@ export function InvoicesManager({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-black text-slate-900">Faturamento & Cobranças de Água</h2>
@@ -106,13 +169,34 @@ export function InvoicesManager({
           </p>
         </div>
 
-        <button
-          onClick={onOpenNewInvoice}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition-all self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Emitir Nova Fatura (m³)</span>
-        </button>
+        {/* Action Buttons: New Invoice, Export CSV, Export PDF */}
+        <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto">
+          <button
+            onClick={handleExportCSV}
+            title="Descarregar ficheiro CSV compatível com Excel / Sheets"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200 shadow-xs transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Exportar CSV</span>
+          </button>
+
+          <button
+            onClick={() => setReportModalOpen(true)}
+            title="Gerar e imprimir relatório executivo em PDF com discriminação de faturas"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 shadow-xs transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-slate-600" />
+            <span>Exportar PDF</span>
+          </button>
+
+          <button
+            onClick={onOpenNewInvoice}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Fatura (m³)</span>
+          </button>
+        </div>
       </div>
 
       {/* Mini metric pills for filtered view */}
@@ -330,6 +414,15 @@ export function InvoicesManager({
           </div>
         )}
       </div>
+
+      {/* Monthly Report PDF Modal */}
+      <MonthlyReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        invoices={filteredInvoices}
+        settings={settings}
+        selectedMonth={monthFilter}
+      />
     </div>
   );
 }
