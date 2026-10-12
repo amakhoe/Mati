@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   FileText,
@@ -13,7 +13,19 @@ import {
   Clock,
   Gauge,
   Activity,
+  BarChart3,
+  Calendar,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { Client, Invoice, WaterStationConsumption, SystemSettings } from '@/types/water-system';
 import { ActiveTab } from '@/components/Navbar';
 
@@ -64,6 +76,71 @@ export function DashboardOverview({
     lossPercentage = Math.round((waterLossM3 / totalPumpedM3) * 100);
     efficiencyRate = Math.min(100, Math.round((totalInvoicedM3 / totalPumpedM3) * 100));
   }
+
+  // Hydration safety for Recharts ResponsiveContainer in Next.js using useSyncExternalStore
+  const isMounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [chartMode, setChartMode] = useState<'all' | 'clients' | 'stations'>('all');
+
+  const formatMonthLabel = (m: string) => {
+    if (!m) return '';
+    const parts = m.split('-');
+    if (parts.length === 2) {
+      const year = parts[0];
+      const monthIndex = parseInt(parts[1], 10) - 1;
+      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      return `${months[monthIndex] || parts[1]}/${year.slice(2)}`;
+    }
+    return m;
+  };
+
+  // Compute monthly trend data for the bar chart
+  const chartData = useMemo(() => {
+    const monthsSet = new Set<string>();
+    invoices.forEach((inv) => {
+      if (inv.periodMonth) monthsSet.add(inv.periodMonth);
+    });
+    stations.forEach((st) => {
+      if (st.periodMonth) monthsSet.add(st.periodMonth);
+    });
+
+    // If database has very little historical data, ensure at least current and previous months show up
+    if (monthsSet.size === 0) {
+      monthsSet.add(currentMonth);
+    }
+
+    const sortedMonths = Array.from(monthsSet).sort();
+    const recentMonths = sortedMonths.slice(-12);
+
+    return recentMonths.map((m) => {
+      const clientVolume = invoices
+        .filter((inv) => inv.periodMonth === m)
+        .reduce((acc, curr) => acc + (curr.consumptionM3 || 0), 0);
+      const stationVolume = stations
+        .filter((st) => st.periodMonth === m)
+        .reduce((acc, curr) => acc + (curr.pumpedVolumeM3 || 0), 0);
+      const billingMT = invoices
+        .filter((inv) => inv.periodMonth === m)
+        .reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+
+      return {
+        periodMonth: m,
+        monthLabel: formatMonthLabel(m),
+        consumoClientes: Math.round(clientVolume * 10) / 10,
+        volumeBombeado: Math.round(stationVolume * 10) / 10,
+        faturamentoMT: billingMT,
+      };
+    });
+  }, [invoices, stations, currentMonth]);
+
+  // Key trend metrics
+  const totalTrackedClientVolume = chartData.reduce((acc, curr) => acc + curr.consumoClientes, 0);
+  const averageClientVolume =
+    chartData.length > 0 ? Math.round(totalTrackedClientVolume / chartData.length) : 0;
+  const peakMonthItem = [...chartData].sort((a, b) => b.consumoClientes - a.consumoClientes)[0];
 
   return (
     <div className="space-y-6">
@@ -296,6 +373,207 @@ export function DashboardOverview({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Monthly Water Consumption Trend Bar Chart (Recharts) */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
+              <BarChart3 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-base">
+                  Consumo e Tendência Mensal de Água (m³)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-800 border border-sky-200">
+                  Recharts Analytics
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Evolução do volume consumido em hidrómetros de clientes vs volume injetado pelos postos de bombagem
+              </p>
+            </div>
+          </div>
+
+          {/* Chart Controls & Filter Pill */}
+          <div className="flex items-center gap-2 self-start md:self-auto bg-slate-100/90 p-1 rounded-xl border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setChartMode('all')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                chartMode === 'all'
+                  ? 'bg-white text-sky-800 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Comparativo Geral
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartMode('clients')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                chartMode === 'clients'
+                  ? 'bg-white text-sky-800 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Apenas Clientes (m³)
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartMode('stations')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                chartMode === 'stations'
+                  ? 'bg-white text-sky-800 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Apenas Postos (m³)
+            </button>
+          </div>
+        </div>
+
+        {/* Quick summary metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-sky-50/50 p-3.5 rounded-xl border border-sky-100">
+            <span className="text-[11px] font-semibold text-slate-500 block">Consumo Médio Mensal</span>
+            <span className="text-xl font-black text-sky-900">
+              {averageClientVolume.toLocaleString()} <span className="text-xs font-bold text-slate-500">m³ / mês</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Média calculada sobre o histórico registrado</span>
+          </div>
+
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+            <span className="text-[11px] font-semibold text-slate-500 block">Pico de Consumo Registrado</span>
+            <span className="text-xl font-black text-slate-900">
+              {peakMonthItem?.consumoClientes?.toLocaleString() || 0} <span className="text-xs font-bold text-slate-500">m³</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">
+              Mês: {peakMonthItem?.monthLabel || 'N/D'}
+            </span>
+          </div>
+
+          <div className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100">
+            <span className="text-[11px] font-semibold text-slate-500 block">Volume Total Acumulado</span>
+            <span className="text-xl font-black text-indigo-950">
+              {totalTrackedClientVolume.toLocaleString()} <span className="text-xs font-bold text-indigo-700">m³</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Soma de todo o histórico no gráfico</span>
+          </div>
+        </div>
+
+        {/* Recharts Bar Chart Container */}
+        <div className="pt-2">
+          {!isMounted ? (
+            <div className="h-72 w-full flex items-center justify-center bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400 animate-pulse">
+              A carregar gráfico de tendência de consumo...
+            </div>
+          ) : chartData.length === 0 || (totalTrackedClientVolume === 0 && totalPumpedM3 === 0) ? (
+            <div className="h-64 w-full flex flex-col items-center justify-center bg-slate-50 rounded-xl border border-slate-100 text-center p-6 text-slate-400">
+              <BarChart3 className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="text-sm font-semibold text-slate-600">Sem histórico suficiente para exibir o gráfico</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                Registe novas faturas com consumo em m³ ou carregue os dados de demonstração nas configurações para visualizar a tendência mensal.
+              </p>
+            </div>
+          ) : (
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                  barGap={8}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="monthLabel"
+                    tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    unit=" m³"
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xl border border-slate-700 text-xs space-y-2 min-w-[210px]">
+                            <div className="font-bold border-b border-slate-800 pb-1.5 flex items-center justify-between text-slate-200">
+                              <span>Período:</span>
+                              <span className="font-mono text-sky-400">{data.monthLabel} ({data.periodMonth})</span>
+                            </div>
+                            <div className="space-y-1">
+                              {(chartMode === 'all' || chartMode === 'clients') && (
+                                <div className="flex items-center justify-between gap-3 text-sky-200">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-xs bg-sky-500 inline-block" />
+                                    Consumo Clientes:
+                                  </span>
+                                  <span className="font-bold font-mono text-white">
+                                    {data.consumoClientes.toLocaleString()} m³
+                                  </span>
+                                </div>
+                              )}
+                              {(chartMode === 'all' || chartMode === 'stations') && (
+                                <div className="flex items-center justify-between gap-3 text-indigo-200">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-xs bg-indigo-500 inline-block" />
+                                    Volume Bombeado:
+                                  </span>
+                                  <span className="font-bold font-mono text-white">
+                                    {data.volumeBombeado.toLocaleString()} m³
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {data.faturamentoMT > 0 && (
+                              <div className="pt-1.5 border-t border-slate-800 text-[11px] text-emerald-400 flex items-center justify-between">
+                                <span>Faturamento:</span>
+                                <span className="font-bold font-mono">
+                                  {data.faturamentoMT.toLocaleString('pt-MZ', { minimumFractionDigits: 2 })} {settings.currency}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ paddingTop: 16, fontSize: '12px' }}
+                    formatter={(value) => <span className="text-slate-700 font-semibold text-xs">{value}</span>}
+                  />
+                  {(chartMode === 'all' || chartMode === 'clients') && (
+                    <Bar
+                      dataKey="consumoClientes"
+                      name="Consumo dos Clientes (m³)"
+                      fill="#0284c7"
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={48}
+                    />
+                  )}
+                  {(chartMode === 'all' || chartMode === 'stations') && (
+                    <Bar
+                      dataKey="volumeBombeado"
+                      name="Volume Bombeado no Posto (m³)"
+                      fill="#6366f1"
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={48}
+                    />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Two columns: Recent Invoices & Pending Alerts */}

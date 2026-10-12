@@ -42,9 +42,14 @@ import {
   InvoiceStatus,
 } from '@/types/water-system';
 import { Droplets, Sparkles, Loader2, Database, RefreshCw, CheckCircle2 } from 'lucide-react';
-import { User } from 'firebase/auth';
 
-function AuthenticatedWaterApp({ user }: { user: User }) {
+interface AppUser {
+  email: string;
+  uid: string;
+  displayName?: string;
+}
+
+function AuthenticatedWaterApp({ user }: { user: AppUser }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [clients, setClients] = useState<Client[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);

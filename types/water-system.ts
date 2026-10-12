@@ -73,6 +73,50 @@ export interface SystemSettings {
   paymentInstructions: string;
 }
 
+export type OperatorRole = 'admin' | 'operator' | 'supervisor';
+
+export interface Operator {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: OperatorRole;
+  status: 'active' | 'suspended';
+  phone?: string;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+export const DEFAULT_DATABASE_OPERATORS: Omit<Operator, 'id'>[] = [
+  {
+    name: 'Operador de Campo (Manhiça Sede)',
+    email: 'operador.manhica@aguas.mz',
+    password: 'Manhica2026!',
+    role: 'operator',
+    status: 'active',
+    phone: '+258 84 312 4567',
+    createdAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    name: 'Administrador Geral do Sistema',
+    email: 'admin.manhica@aguas.mz',
+    password: 'Manhica2026!',
+    role: 'admin',
+    status: 'active',
+    phone: '+258 87 500 1234',
+    createdAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    name: 'Gestor Amakhoekars (Admin)',
+    email: 'amakhoekars@gmail.com',
+    password: 'Manhica2026!',
+    role: 'admin',
+    status: 'active',
+    phone: '+258 84 000 0000',
+    createdAt: '2026-01-01T00:00:00Z',
+  },
+];
+
 export const MANHICA_NEIGHBORHOODS = [
   'Manhiça Sede - Centro',
   'Ribínguè',

@@ -112,20 +112,21 @@ export function Navbar({ activeTab, setActiveTab, pendingInvoicesCount }: Navbar
             {user ? (
               <div className="flex items-center gap-2.5">
                 <div className="hidden sm:flex flex-col text-right">
-                  <span className="text-xs font-semibold text-slate-800 truncate max-w-[170px]">
-                    {user.email}
+                  <span className="text-xs font-bold text-slate-800 truncate max-w-[170px]">
+                    {user.displayName || user.email}
                   </span>
-                  <span className="text-[10px] font-medium text-emerald-600 flex items-center justify-end gap-1">
-                    <ShieldCheck className="w-3 h-3" /> Operador Firebase
+                  <span className="text-[10px] font-semibold text-emerald-600 flex items-center justify-end gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Firebase Auth</span>
                   </span>
                 </div>
-                <div className="w-9 h-9 rounded-full bg-sky-100 border border-sky-300 text-sky-700 flex items-center justify-center font-bold text-sm shadow-xs">
-                  {user.email ? user.email[0].toUpperCase() : <UserIcon className="w-4 h-4" />}
+                <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold text-sm shadow-xs">
+                  {user.displayName ? user.displayName[0].toUpperCase() : user.email ? user.email[0].toUpperCase() : <UserIcon className="w-4 h-4" />}
                 </div>
                 <button
                   onClick={() => logOut()}
                   title="Terminar Sessão"
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>

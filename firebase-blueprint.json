@@ -1,5 +1,21 @@
 {
   "entities": {
+    "Operator": {
+      "title": "Operator",
+      "description": "Utilizador operador registado na base de dados para autenticação",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 120 },
+        "password": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["admin", "operator", "supervisor"] },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string" },
+        "lastLogin": { "type": "string" }
+      },
+      "required": ["name", "email", "password", "role", "status"]
+    },
     "Client": {
       "title": "Client",
       "description": "Cliente consumidor de água na comunidade de Manhiça",
@@ -90,6 +106,10 @@
     }
   },
   "firestore": {
+    "/operators/{operatorId}": {
+      "schema": { "$ref": "#/entities/Operator" },
+      "description": "Contas de operadores armazenadas na base de dados para autenticação"
+    },
     "/clients/{clientId}": {
       "schema": { "$ref": "#/entities/Client" },
       "description": "Registo de clientes da rede de abastecimento"

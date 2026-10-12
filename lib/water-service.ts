@@ -9,6 +9,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  where,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import {
@@ -17,7 +18,172 @@ import {
   WaterStationConsumption,
   SystemSettings,
   DEFAULT_SETTINGS,
+  Operator,
+  DEFAULT_DATABASE_OPERATORS,
 } from '@/types/water-system';
+
+// ----------------------------------------------------
+// OPERATORS & DIRECT DATABASE AUTHENTICATION SERVICE
+// ----------------------------------------------------
+
+/**
+ * Ensures default operator accounts exist in Firestore database
+ */
+export async function ensureDefaultOperatorsInDb(): Promise<void> {
+  const path = 'operators';
+  try {
+    const snap = await getDocs(collection(db, path));
+    const existingEmails = new Set<string>();
+    snap.forEach((d) => {
+      const data = d.data();
+      if (data.email) existingEmails.add(data.email.toLowerCase().trim());
+    });
+
+    for (const op of DEFAULT_DATABASE_OPERATORS) {
+      const normalizedEmail = op.email.toLowerCase().trim();
+      if (!existingEmails.has(normalizedEmail)) {
+        const docId = `op_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}`;
+        await setDoc(doc(db, path, docId), {
+          ...op,
+          email: normalizedEmail,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not bootstrap default database operators:', err);
+  }
+}
+
+/**
+ * Authenticates directly against the Firestore database:
+ * ONLY users registered in the Firestore database are allowed!
+ */
+export async function authenticateOperatorDirectlyFromDb(
+  email: string,
+  pass: string
+): Promise<Operator> {
+  const path = 'operators';
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // First, ensure default accounts exist in database if this is a fresh setup
+  await ensureDefaultOperatorsInDb();
+
+  try {
+    const q = query(collection(db, path), where('email', '==', normalizedEmail));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      throw new Error(
+        `Acesso Recusado: O utilizador "${email}" não se encontra registado na base de dados do sistema. Apenas contas existentes na base de dados Firebase têm autorização para aceder.`
+      );
+    }
+
+    let foundOp: Operator | null = null;
+    let foundDocId: string | null = null;
+
+    snap.forEach((docSnap) => {
+      if (!foundOp) {
+        foundOp = { id: docSnap.id, ...(docSnap.data() as Omit<Operator, 'id'>) };
+        foundDocId = docSnap.id;
+      }
+    });
+
+    if (!foundOp) {
+      throw new Error(
+        `Acesso Recusado: Utilizador "${email}" não localizado na base de dados.`
+      );
+    }
+
+    const op = foundOp as Operator;
+
+    // Check account status in database
+    if (op.status === 'suspended') {
+      throw new Error(
+        `Acesso Bloqueado: A conta de "${op.name}" (${op.email}) está suspensa na base de dados.`
+      );
+    }
+
+    // Check password against database
+    if (op.password !== pass) {
+      throw new Error(
+        `Palavra-passe incorreta para o utilizador "${op.email}" registado na base de dados.`
+      );
+    }
+
+    // Update last login in database
+    if (foundDocId) {
+      try {
+        await updateDoc(doc(db, path, foundDocId), {
+          lastLogin: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Failed to update lastLogin in db:', e);
+      }
+    }
+
+    return op;
+  } catch (error: any) {
+    if (error.message && error.message.includes('Acesso') || error.message.includes('Palavra-passe')) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function fetchOperatorsFromDb(): Promise<Operator[]> {
+  const path = 'operators';
+  try {
+    const snap = await getDocs(collection(db, path));
+    const list: Operator[] = [];
+    snap.forEach((d) => {
+      list.push({ id: d.id, ...(d.data() as Omit<Operator, 'id'>) });
+    });
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function createOperatorInDb(operatorData: Omit<Operator, 'id'>): Promise<string> {
+  const path = 'operators';
+  const normalizedEmail = operatorData.email.toLowerCase().trim();
+  const newId = `op_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    // Check if email already exists in database
+    const existingQ = query(collection(db, path), where('email', '==', normalizedEmail));
+    const snap = await getDocs(existingQ);
+    if (!snap.empty) {
+      throw new Error(`Já existe um utilizador registado com o email ${normalizedEmail} na base de dados.`);
+    }
+
+    await setDoc(doc(db, path, newId), {
+      ...operatorData,
+      email: normalizedEmail,
+      createdAt: new Date().toISOString(),
+    });
+    return newId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `${path}/${newId}`);
+  }
+}
+
+export async function updateOperatorInDb(id: string, updates: Partial<Operator>): Promise<void> {
+  const path = `operators/${id}`;
+  try {
+    await updateDoc(doc(db, 'operators', id), updates);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteOperatorInDb(id: string): Promise<void> {
+  const path = `operators/${id}`;
+  try {
+    await deleteDoc(doc(db, 'operators', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
 
 // ----------------------------------------------------
 // CLIENTS SERVICE
@@ -401,6 +567,8 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
   // Sample Invoices with manual m³ price as requested (ex: 45 MT / m³)
   const currentMonth = new Date().toISOString().substring(0, 7); // e.g. 2026-10
   const prevMonth = '2026-09';
+  const monthAug = '2026-08';
+  const monthJul = '2026-07';
 
   const sampleInvoices: Omit<Invoice, 'id'>[] = [
     {
@@ -484,6 +652,106 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       paymentMethod: 'M-Pesa',
       createdBy: operatorEmail || 'sistema',
     },
+    {
+      invoiceNumber: `FAT-MAN-2026-PREV-092`,
+      clientId: createdClients[1].id,
+      clientName: createdClients[1].name,
+      meterNumber: createdClients[1].meterNumber,
+      periodMonth: prevMonth,
+      previousReading: 282,
+      currentReading: 310,
+      consumptionM3: 28,
+      unitPriceM3: 48.0,
+      subtotal: 28 * 48.0,
+      fixedFee: 50.0,
+      totalAmount: 1394.0,
+      status: 'paid',
+      readingDate: `${prevMonth}-03`,
+      dueDate: `${prevMonth}-20`,
+      paidAt: `${prevMonth}-12T11:00:00Z`,
+      paymentMethod: 'Numerário / Caixa',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `FAT-MAN-2026-AUG-081`,
+      clientId: createdClients[0].id,
+      clientName: createdClients[0].name,
+      meterNumber: createdClients[0].meterNumber,
+      periodMonth: monthAug,
+      previousReading: 108,
+      currentReading: 120,
+      consumptionM3: 12,
+      unitPriceM3: 45.0,
+      subtotal: 12 * 45.0,
+      fixedFee: 50.0,
+      totalAmount: 590.0,
+      status: 'paid',
+      readingDate: `${monthAug}-04`,
+      dueDate: `${monthAug}-24`,
+      paidAt: `${monthAug}-15T09:00:00Z`,
+      paymentMethod: 'M-Pesa',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `FAT-MAN-2026-AUG-082`,
+      clientId: createdClients[1].id,
+      clientName: createdClients[1].name,
+      meterNumber: createdClients[1].meterNumber,
+      periodMonth: monthAug,
+      previousReading: 256,
+      currentReading: 282,
+      consumptionM3: 26,
+      unitPriceM3: 48.0,
+      subtotal: 26 * 48.0,
+      fixedFee: 50.0,
+      totalAmount: 1298.0,
+      status: 'paid',
+      readingDate: `${monthAug}-04`,
+      dueDate: `${monthAug}-24`,
+      paidAt: `${monthAug}-14T10:00:00Z`,
+      paymentMethod: 'Numerário / Caixa',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `FAT-MAN-2026-JUL-071`,
+      clientId: createdClients[0].id,
+      clientName: createdClients[0].name,
+      meterNumber: createdClients[0].meterNumber,
+      periodMonth: monthJul,
+      previousReading: 95,
+      currentReading: 108,
+      consumptionM3: 13,
+      unitPriceM3: 45.0,
+      subtotal: 13 * 45.0,
+      fixedFee: 50.0,
+      totalAmount: 635.0,
+      status: 'paid',
+      readingDate: `${monthJul}-05`,
+      dueDate: `${monthJul}-25`,
+      paidAt: `${monthJul}-19T14:00:00Z`,
+      paymentMethod: 'M-Pesa',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `FAT-MAN-2026-JUL-072`,
+      clientId: createdClients[1].id,
+      clientName: createdClients[1].name,
+      meterNumber: createdClients[1].meterNumber,
+      periodMonth: monthJul,
+      previousReading: 232,
+      currentReading: 256,
+      consumptionM3: 24,
+      unitPriceM3: 48.0,
+      subtotal: 24 * 48.0,
+      fixedFee: 50.0,
+      totalAmount: 1202.0,
+      status: 'paid',
+      readingDate: `${monthJul}-04`,
+      dueDate: `${monthJul}-24`,
+      paidAt: `${monthJul}-15T11:00:00Z`,
+      paymentMethod: 'Numerário / Caixa',
+      createdBy: operatorEmail || 'sistema',
+    },
   ];
 
   for (const inv of sampleInvoices) {
@@ -534,6 +802,36 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       fuelLiters: 90,
       chlorineKg: 8.0,
       notes: 'Mês anterior concluído sem interrupções maiores.',
+      recordedAt: new Date().toISOString(),
+      recordedBy: operatorEmail || 'Engenharia de Operações',
+    },
+    {
+      stationId: 'posto-central-manhica',
+      stationName: 'Posto Central de Captação & Abastecimento (Manhiça Sede)',
+      periodMonth: monthAug,
+      initialPumpReading: 9480,
+      finalPumpReading: 10920,
+      pumpedVolumeM3: 1440,
+      operatingHours: 230,
+      energyKwh: 1750,
+      fuelLiters: 60,
+      chlorineKg: 7.8,
+      notes: 'Operação estável no pico da época seca.',
+      recordedAt: new Date().toISOString(),
+      recordedBy: operatorEmail || 'Engenharia de Operações',
+    },
+    {
+      stationId: 'posto-central-manhica',
+      stationName: 'Posto Central de Captação & Abastecimento (Manhiça Sede)',
+      periodMonth: monthJul,
+      initialPumpReading: 8120,
+      finalPumpReading: 9480,
+      pumpedVolumeM3: 1360,
+      operatingHours: 220,
+      energyKwh: 1680,
+      fuelLiters: 45,
+      chlorineKg: 7.5,
+      notes: 'Manutenção preventiva periódica efetuada.',
       recordedAt: new Date().toISOString(),
       recordedBy: operatorEmail || 'Engenharia de Operações',
     },
