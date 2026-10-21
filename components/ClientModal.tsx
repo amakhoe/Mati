@@ -41,6 +41,7 @@ function ClientModalForm({
     return `HID-MAN-${randomSuffix}`;
   });
   const [phone, setPhone] = useState(() => editingClient?.phone || '+258 8');
+  const [email, setEmail] = useState(() => editingClient?.email || '');
   const [identityNumber, setIdentityNumber] = useState(() => editingClient?.identityNumber || '');
 
   const [neighborhood, setNeighborhood] = useState<string>(() => {
@@ -89,6 +90,7 @@ function ClientModalForm({
         name: name.trim(),
         meterNumber: meterNumber.trim().toUpperCase(),
         phone: phone.trim(),
+        email: email.trim(),
         identityNumber: identityNumber.trim(),
         neighborhood: finalNeighborhood,
         address: address.trim(),
@@ -177,6 +179,20 @@ function ClientModalForm({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="ex: +258 84 123 4567"
+                className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              />
+            </div>
+
+            {/* Email para Notificações & Lembretes */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Email para Notificações & Lembretes
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ex: cliente.manhica@gmail.com"
                 className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
             </div>

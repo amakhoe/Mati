@@ -5,6 +5,7 @@ export interface Client {
   name: string;
   meterNumber: string;
   phone: string;
+  email?: string; // Endereço de email para envio de notificações e lembretes
   identityNumber: string; // BI ou NUIT
   neighborhood: string; // Bairro em Manhiça
   address: string;
@@ -25,6 +26,7 @@ export interface Invoice {
   invoiceNumber: string;
   clientId: string;
   clientName: string;
+  clientEmail?: string; // Email do cliente para notificações
   meterNumber: string;
   periodMonth: string; // YYYY-MM
   previousReading: number; // m³
@@ -42,6 +44,36 @@ export interface Invoice {
   notes?: string;
   createdAt?: string;
   createdBy?: string;
+  reminderSentAt?: string; // Data e hora do último lembrete enviado
+  reminderCount?: number; // Contagem de lembretes enviados
+}
+
+/**
+ * Checks if an invoice is overdue based on current date
+ */
+export function isInvoiceOverdue(invoice: Invoice, todayStr?: string): boolean {
+  if (invoice.status === 'paid' || invoice.status === 'cancelled') return false;
+  if (invoice.status === 'overdue') return true;
+  if (!invoice.dueDate) return false;
+  const today = todayStr || new Date().toISOString().substring(0, 10);
+  return invoice.dueDate < today;
+}
+
+/**
+ * Calculates how many days an invoice is overdue
+ */
+export function getDaysOverdue(dueDateStr: string, todayStr?: string): number {
+  if (!dueDateStr) return 0;
+  try {
+    const today = todayStr || new Date().toISOString().substring(0, 10);
+    const dueDate = new Date(dueDateStr);
+    const currentDate = new Date(today);
+    const diffTime = currentDate.getTime() - dueDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export interface WaterStationConsumption {

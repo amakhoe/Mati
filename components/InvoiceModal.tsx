@@ -126,6 +126,7 @@ function InvoiceModalForm({
         invoiceNumber,
         clientId: selectedClient.id,
         clientName: selectedClient.name,
+        clientEmail: selectedClient.email || undefined,
         meterNumber: selectedClient.meterNumber,
         periodMonth,
         previousReading: Number(previousReading),

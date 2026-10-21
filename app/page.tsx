@@ -22,6 +22,7 @@ import {
   createInvoice,
   updateInvoiceStatus,
   deleteInvoice,
+  recordInvoiceReminder,
   subscribeStationConsumptions,
   createStationConsumption,
   updateStationConsumption,
@@ -173,6 +174,17 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
   const handlePrintInvoice = (inv: Invoice) => {
     setSelectedInvoiceForPrint(inv);
     setPrintModalOpen(true);
+  };
+
+  const handleReminderSent = async (invoiceId: string, email: string) => {
+    const inv = invoices.find((i) => i.id === invoiceId);
+    await recordInvoiceReminder(invoiceId, email, inv?.reminderCount || 0);
+    notify(`Lembrete de cobrança registado para ${email}!`);
+  };
+
+  const handleUpdateClientEmail = async (clientId: string, email: string) => {
+    await updateClient(clientId, { email });
+    notify(`Email ${email} atualizado no cadastro do cliente.`);
   };
 
   // Handlers for Stations
@@ -350,6 +362,7 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
         {activeTab === 'invoices' && (
           <InvoicesManager
             invoices={invoices}
+            clients={clients}
             settings={settings}
             onOpenNewInvoice={() => {
               setPreselectedClient(null);
@@ -358,6 +371,8 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
             onPrintInvoice={handlePrintInvoice}
             onUpdateStatus={handleUpdateInvoiceStatus}
             onDeleteInvoice={handleDeleteInvoice}
+            onReminderSent={handleReminderSent}
+            onUpdateClientEmail={handleUpdateClientEmail}
           />
         )}
 

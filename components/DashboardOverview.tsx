@@ -8,6 +8,8 @@ import {
   Coins,
   TrendingUp,
   AlertCircle,
+  AlertTriangle,
+  Mail,
   PlusCircle,
   CheckCircle2,
   Clock,
@@ -26,7 +28,13 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { Client, Invoice, WaterStationConsumption, SystemSettings } from '@/types/water-system';
+import {
+  Client,
+  Invoice,
+  WaterStationConsumption,
+  SystemSettings,
+  isInvoiceOverdue,
+} from '@/types/water-system';
 import { ActiveTab } from '@/components/Navbar';
 
 interface DashboardOverviewProps {
@@ -62,6 +70,11 @@ export function DashboardOverview({
     .filter((i) => i.status === 'paid' && i.periodMonth === currentMonth)
     .reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
   const pendingInvoices = invoices.filter((i) => i.status === 'pending');
+  const overdueInvoices = useMemo(() => invoices.filter((i) => isInvoiceOverdue(i)), [invoices]);
+  const overdueTotalAmount = useMemo(
+    () => overdueInvoices.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0),
+    [overdueInvoices]
+  );
 
   // Station pumped volume for current month
   const currentMonthStations = stations.filter((s) => s.periodMonth === currentMonth);
@@ -285,6 +298,42 @@ export function DashboardOverview({
           </div>
         </div>
       </div>
+
+      {/* Overdue Invoices Alert Banner */}
+      {overdueInvoices.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-rose-950 shadow-2xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-sm text-slate-900">
+                  {overdueInvoices.length} Fatura{overdueInvoices.length > 1 ? 's' : ''} Vencida{overdueInvoices.length > 1 ? 's' : ''} em Atraso
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white">
+                  Ação Necessária
+                </span>
+              </div>
+              <p className="text-xs text-rose-800 mt-0.5">
+                Total acumulado em dívida de{' '}
+                <strong>
+                  {overdueTotalAmount.toLocaleString('pt-MZ', { minimumFractionDigits: 2 })}{' '}
+                  {settings.currency}
+                </strong>
+                . Pode filtrar faturas atrasadas e enviar lembretes formais por email aos clientes.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shrink-0 cursor-pointer shadow-sm hover:shadow"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Ver Faturas & Enviar Lembretes</span>
+          </button>
+        </div>
+      )}
 
       {/* Water Balance & Supply Station Efficiency Card */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">

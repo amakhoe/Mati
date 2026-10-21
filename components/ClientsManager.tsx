@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Mail,
 } from 'lucide-react';
 import { Client, MANHICA_NEIGHBORHOODS } from '@/types/water-system';
 
@@ -166,11 +167,17 @@ export function ClientsManager({
                     {/* Nome & Contato */}
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 text-sm">{client.name}</div>
-                      <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 mt-0.5">
                         {client.phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3 text-sky-600" />
                             {client.phone}
+                          </span>
+                        )}
+                        {client.email && (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <Mail className="w-3 h-3 text-amber-600" />
+                            {client.email}
                           </span>
                         )}
                         {client.identityNumber && (

@@ -358,6 +358,38 @@ export async function updateInvoiceStatus(
   }
 }
 
+export async function updateInvoice(
+  id: string,
+  updates: Partial<Invoice>
+): Promise<void> {
+  const path = `invoices/${id}`;
+  try {
+    await updateDoc(doc(db, 'invoices', id), {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function recordInvoiceReminder(
+  id: string,
+  recipientEmail: string,
+  currentReminderCount: number = 0
+): Promise<void> {
+  const path = `invoices/${id}`;
+  try {
+    await updateDoc(doc(db, 'invoices', id), {
+      clientEmail: recipientEmail,
+      reminderSentAt: new Date().toISOString(),
+      reminderCount: (currentReminderCount || 0) + 1,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function deleteInvoice(id: string): Promise<void> {
   const path = `invoices/${id}`;
   try {
@@ -490,6 +522,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       name: 'Armando Bento Sitoe',
       meterNumber: 'HID-MAN-0101',
       phone: '+258 84 412 8890',
+      email: 'armando.sitoe@gmail.com',
       identityNumber: '1102938472M',
       neighborhood: 'Ribínguè',
       address: 'Rua das Mangueiras, Próximo ao Campo de Futebol',
@@ -504,6 +537,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       name: 'Maria Esperança Cossa',
       meterNumber: 'HID-MAN-0102',
       phone: '+258 87 220 9011',
+      email: 'maria.cossa@outlook.com',
       identityNumber: '0812903819F',
       neighborhood: 'Manhiça Sede - Centro',
       address: 'Av. Eduardo Mondlane, Q. 04, Casa 12',
@@ -518,6 +552,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       name: 'Joaquim Alberto Mondlane',
       meterNumber: 'HID-MAN-0103',
       phone: '+258 82 710 4432',
+      email: 'joaquim.mondlane@gmail.com',
       identityNumber: '1098471203M',
       neighborhood: 'Nhambalo',
       address: 'Bairro Nhambalo, Estrada Velha para Xinavane',
@@ -532,6 +567,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       name: 'Graça Teresa Matsinhe',
       meterNumber: 'HID-MAN-0104',
       phone: '+258 84 890 1234',
+      email: 'graca.matsinhe@tecnologia.mz',
       identityNumber: '0912384721F',
       neighborhood: 'Maluana',
       address: 'Próximo ao Centro Tecnológico da Maluana',
@@ -546,6 +582,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       name: 'António Salomão Nhantumbo',
       meterNumber: 'HID-MAN-0105',
       phone: '+258 86 331 7765',
+      email: 'antonio.nhantumbo@gmail.com',
       identityNumber: '1209384756M',
       neighborhood: 'Chibututuine',
       address: 'Estrada Nacional N1, Km 72',
@@ -575,6 +612,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-001`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
+      clientEmail: createdClients[0].email,
       meterNumber: createdClients[0].meterNumber,
       periodMonth: currentMonth,
       previousReading: 132,
@@ -586,7 +624,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       totalAmount: 770.0,
       status: 'pending',
       readingDate: `${currentMonth}-05`,
-      dueDate: `${currentMonth}-25`,
+      dueDate: `${currentMonth}-25`, // A vencer no fim do mês
       paymentMethod: 'M-Pesa',
       notes: 'Fatura de água de consumo regular.',
       createdBy: operatorEmail || 'sistema',
@@ -595,6 +633,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-002`,
       clientId: createdClients[1].id,
       clientName: createdClients[1].name,
+      clientEmail: createdClients[1].email,
       meterNumber: createdClients[1].meterNumber,
       periodMonth: currentMonth,
       previousReading: 310,
@@ -616,6 +655,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-003`,
       clientId: createdClients[2].id,
       clientName: createdClients[2].name,
+      clientEmail: createdClients[2].email,
       meterNumber: createdClients[2].meterNumber,
       periodMonth: currentMonth,
       previousReading: 85,
@@ -626,10 +666,31 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       fixedFee: 50.0,
       totalAmount: 905.0,
       status: 'pending',
-      readingDate: `${currentMonth}-06`,
-      dueDate: `${currentMonth}-26`,
+      readingDate: `${currentMonth}-01`,
+      dueDate: `2026-10-15`, // VENCIDA (ultrapassada em relação à data atual 21/10)
       paymentMethod: 'E-Mola',
-      notes: 'Notificado por SMS / Telefone.',
+      notes: 'Fatura em atraso. Aguarda pagamento.',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-004`,
+      clientId: createdClients[0].id,
+      clientName: createdClients[0].name,
+      clientEmail: createdClients[0].email,
+      meterNumber: createdClients[0].meterNumber,
+      periodMonth: prevMonth,
+      previousReading: 110,
+      currentReading: 120,
+      consumptionM3: 10,
+      unitPriceM3: 45.0,
+      subtotal: 10 * 45.0,
+      fixedFee: 50.0,
+      totalAmount: 500.0,
+      status: 'pending', // Vencida há mais de 15 dias!
+      readingDate: `${prevMonth}-02`,
+      dueDate: `2026-10-05`,
+      paymentMethod: 'M-Pesa',
+      notes: 'Fatura em atraso do mês anterior.',
       createdBy: operatorEmail || 'sistema',
     },
     {

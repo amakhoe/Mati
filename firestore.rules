@@ -5,33 +5,57 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\@]+$');
     }
 
-    // Operadores da Base de Dados (Autenticação direta)
+    // Operadores da Base de Dados (Autenticação direta e perfis de acesso)
     match /operators/{operatorId} {
-      allow read, write: if isValidId(operatorId);
+      allow get: if isValidId(operatorId);
+      allow list: if true;
+      allow create, update: if isValidId(operatorId);
+      allow delete: if isValidId(operatorId) && isSignedIn();
     }
 
-    // Clientes
+    // Clientes da Rede de Abastecimento de Água
     match /clients/{clientId} {
-      allow read, write: if isValidId(clientId);
+      allow get: if isValidId(clientId);
+      allow list: if true;
+      allow create, update: if isValidId(clientId);
+      allow delete: if isValidId(clientId) && isSignedIn();
     }
 
-    // Faturas
+    // Faturas de Água
     match /invoices/{invoiceId} {
-      allow read, write: if isValidId(invoiceId);
+      allow get: if isValidId(invoiceId);
+      allow list: if true;
+      allow create, update: if isValidId(invoiceId);
+      allow delete: if isValidId(invoiceId) && isSignedIn();
     }
 
-    // Consumo Mensal dos Postos de Abastecimento
+    // Registos de Bombeamento e Consumo dos Postos de Abastecimento
     match /stationConsumptions/{recordId} {
-      allow read, write: if isValidId(recordId);
+      allow get: if isValidId(recordId);
+      allow list: if true;
+      allow create, update: if isValidId(recordId);
+      allow delete: if isValidId(recordId) && isSignedIn();
     }
 
-    // Configurações do Sistema
+    // Configurações Gerais do Sistema
     match /settings/{settingsId} {
-      allow read, write: if isValidId(settingsId);
+      allow get: if isValidId(settingsId);
+      allow list: if true;
+      allow create, update: if isValidId(settingsId);
+      allow delete: if isValidId(settingsId) && isSignedIn();
+    }
+
+    // Teste de Conexão
+    match /test/{docId} {
+      allow get, list, write: if true;
     }
   }
 }
