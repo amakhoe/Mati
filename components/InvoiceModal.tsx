@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import { X, Save, FileText, Coins } from 'lucide-react';
-import { Client, Invoice, SystemSettings, InvoiceStatus } from '@/types/water-system';
+import { Client, Invoice, SystemSettings, InvoiceStatus, getNextInvoiceNumber } from '@/types/water-system';
 
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (invoiceData: Omit<Invoice, 'id'>) => Promise<void>;
   clients: Client[];
+  invoices?: Invoice[];
   settings: SystemSettings;
   preselectedClient?: Client | null;
 }
@@ -18,6 +19,7 @@ export function InvoiceModal({
   onClose,
   onSave,
   clients,
+  invoices = [],
   settings,
   preselectedClient,
 }: InvoiceModalProps) {
@@ -28,6 +30,7 @@ export function InvoiceModal({
       onClose={onClose}
       onSave={onSave}
       clients={clients}
+      invoices={invoices}
       settings={settings}
       preselectedClient={preselectedClient}
     />
@@ -38,12 +41,14 @@ function InvoiceModalForm({
   onClose,
   onSave,
   clients,
+  invoices = [],
   settings,
   preselectedClient,
 }: {
   onClose: () => void;
   onSave: (invoiceData: Omit<Invoice, 'id'>) => Promise<void>;
   clients: Client[];
+  invoices?: Invoice[];
   settings: SystemSettings;
   preselectedClient?: Client | null;
 }) {
@@ -51,10 +56,9 @@ function InvoiceModalForm({
 
   const [clientId, setClientId] = useState<string>(() => defaultClient?.id || '');
 
+  // Formato oficial exigido: número da fatura e ano (ex: 0012026)
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
-    const now = new Date();
-    const randomCode = Math.floor(1000 + Math.random() * 9000);
-    return `FAT-${now.getFullYear()}-${randomCode}`;
+    return getNextInvoiceNumber(invoices);
   });
 
   const [periodMonth, setPeriodMonth] = useState(() => new Date().toISOString().substring(0, 7));
@@ -151,10 +155,23 @@ function InvoiceModalForm({
     }
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto border border-sky-100">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-sky-50/60">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto border border-sky-100 animate-in fade-in zoom-in-95 duration-150">
+        <div className="sticky top-0 z-20 flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-white/95 backdrop-blur-md shadow-2xs">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold">
               <FileText className="w-5 h-5" />
@@ -167,10 +184,13 @@ function InvoiceModalForm({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            title="Sair / Fechar (ESC)"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
+            <span>Sair</span>
           </button>
         </div>
 
@@ -202,16 +222,23 @@ function InvoiceModalForm({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Nº da Fatura
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Nº da Fatura *
+                </label>
+                <span className="text-[10px] text-sky-700 font-medium">Nº e Ano (ex: 0012026)</span>
+              </div>
               <input
                 type="text"
                 required
                 value={invoiceNumber}
+                placeholder="0012026"
                 onChange={(e) => setInvoiceNumber(e.target.value)}
-                className="w-full text-sm py-2 px-3 font-mono font-bold text-sky-800 bg-slate-50 border border-slate-300 rounded-lg"
+                className="w-full text-sm py-2 px-3 font-mono font-bold text-sky-800 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500"
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Sequencial padronizado: número + ano fiscal
+              </p>
             </div>
           </div>
 
@@ -481,6 +508,10 @@ function InvoiceModalForm({
               )}
               <span>Emitir Fatura</span>
             </button>
+          </div>
+
+          <div className="text-center text-[11px] text-slate-400 font-medium uppercase tracking-wider pt-2 border-t border-slate-100">
+            processado por computador
           </div>
         </form>
       </div>

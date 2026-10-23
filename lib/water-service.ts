@@ -390,13 +390,29 @@ export async function recordInvoiceReminder(
   }
 }
 
-export async function deleteInvoice(id: string): Promise<void> {
+export async function cancelInvoice(
+  id: string,
+  reason?: string,
+  cancelledBy?: string
+): Promise<void> {
   const path = `invoices/${id}`;
   try {
-    await deleteDoc(doc(db, 'invoices', id));
+    await updateDoc(doc(db, 'invoices', id), {
+      status: 'cancelled',
+      cancelledAt: new Date().toISOString(),
+      cancellationReason: reason || 'Cancelada no sistema',
+      cancelledBy: cancelledBy || 'operador',
+      updatedAt: new Date().toISOString(),
+    });
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
+}
+
+export async function deleteInvoice(id: string, reason?: string): Promise<void> {
+  // As faturas de água não podem ser apagadas do sistema, apenas canceladas para conformidade legal e auditoria.
+  console.warn('As faturas de água não podem ser apagadas do sistema por diretriz de auditoria fiscal. Executando cancelamento formal.');
+  await cancelInvoice(id, reason || 'Cancelamento solicitado em substituição da eliminação permanente');
 }
 
 // ----------------------------------------------------
@@ -609,7 +625,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
 
   const sampleInvoices: Omit<Invoice, 'id'>[] = [
     {
-      invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-001`,
+      invoiceNumber: `0012026`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
       clientEmail: createdClients[0].email,
@@ -630,7 +646,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-002`,
+      invoiceNumber: `0022026`,
       clientId: createdClients[1].id,
       clientName: createdClients[1].name,
       clientEmail: createdClients[1].email,
@@ -652,7 +668,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-003`,
+      invoiceNumber: `0032026`,
       clientId: createdClients[2].id,
       clientName: createdClients[2].name,
       clientEmail: createdClients[2].email,
@@ -667,13 +683,13 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       totalAmount: 905.0,
       status: 'pending',
       readingDate: `${currentMonth}-01`,
-      dueDate: `2026-10-15`, // VENCIDA (ultrapassada em relação à data atual 21/10)
+      dueDate: `2026-10-15`, // VENCIDA (ultrapassada em relação à data atual)
       paymentMethod: 'E-Mola',
       notes: 'Fatura em atraso. Aguarda pagamento.',
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-${new Date().getFullYear()}-004`,
+      invoiceNumber: `0042026`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
       clientEmail: createdClients[0].email,
@@ -686,7 +702,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       subtotal: 10 * 45.0,
       fixedFee: 50.0,
       totalAmount: 500.0,
-      status: 'pending', // Vencida há mais de 15 dias!
+      status: 'pending', // Vencida
       readingDate: `${prevMonth}-02`,
       dueDate: `2026-10-05`,
       paymentMethod: 'M-Pesa',
@@ -694,7 +710,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-PREV-091`,
+      invoiceNumber: `0052026`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
       meterNumber: createdClients[0].meterNumber,
@@ -714,7 +730,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-PREV-092`,
+      invoiceNumber: `0062026`,
       clientId: createdClients[1].id,
       clientName: createdClients[1].name,
       meterNumber: createdClients[1].meterNumber,
@@ -734,7 +750,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-AUG-081`,
+      invoiceNumber: `0072026`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
       meterNumber: createdClients[0].meterNumber,
@@ -754,7 +770,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-AUG-082`,
+      invoiceNumber: `0082026`,
       clientId: createdClients[1].id,
       clientName: createdClients[1].name,
       meterNumber: createdClients[1].meterNumber,
@@ -774,7 +790,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-JUL-071`,
+      invoiceNumber: `0092026`,
       clientId: createdClients[0].id,
       clientName: createdClients[0].name,
       meterNumber: createdClients[0].meterNumber,
@@ -794,7 +810,7 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       createdBy: operatorEmail || 'sistema',
     },
     {
-      invoiceNumber: `FAT-MAN-2026-JUL-072`,
+      invoiceNumber: `0102026`,
       clientId: createdClients[1].id,
       clientName: createdClients[1].name,
       meterNumber: createdClients[1].meterNumber,
@@ -807,10 +823,33 @@ export async function seedManhicaSampleData(operatorEmail?: string): Promise<{
       fixedFee: 50.0,
       totalAmount: 1202.0,
       status: 'paid',
-      readingDate: `${monthJul}-04`,
-      dueDate: `${monthJul}-24`,
-      paidAt: `${monthJul}-15T11:00:00Z`,
+      readingDate: `${monthJul}-03`,
+      dueDate: `${monthJul}-22`,
+      paidAt: `${monthJul}-14T15:00:00Z`,
       paymentMethod: 'Numerário / Caixa',
+      createdBy: operatorEmail || 'sistema',
+    },
+    {
+      invoiceNumber: `0112026`,
+      clientId: createdClients[2].id,
+      clientName: createdClients[2].name,
+      clientEmail: createdClients[2].email,
+      meterNumber: createdClients[2].meterNumber,
+      periodMonth: prevMonth,
+      previousReading: 70,
+      currentReading: 85,
+      consumptionM3: 15,
+      unitPriceM3: 45.0,
+      subtotal: 15 * 45.0,
+      fixedFee: 50.0,
+      totalAmount: 725.0,
+      status: 'cancelled',
+      cancelledAt: `${prevMonth}-16T09:30:00Z`,
+      cancellationReason: 'Retificação de leitura solicitada pelo consumidor (hidrómetro aferido)',
+      cancelledBy: operatorEmail || 'operador.manhica@aguas.mz',
+      readingDate: `${prevMonth}-02`,
+      dueDate: `${prevMonth}-22`,
+      notes: 'Fatura cancelada e mantida no histórico para efeito de auditoria.',
       createdBy: operatorEmail || 'sistema',
     },
   ];

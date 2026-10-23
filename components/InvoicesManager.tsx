@@ -6,9 +6,12 @@ import {
   Plus,
   Search,
   Printer,
+  Download,
   CheckCircle2,
   Clock,
-  Trash2,
+  Ban,
+  X,
+  ShieldCheck,
   Coins,
   Droplets,
   FileSpreadsheet,
@@ -34,7 +37,8 @@ interface InvoicesManagerProps {
   onOpenNewInvoice: () => void;
   onPrintInvoice: (invoice: Invoice) => void;
   onUpdateStatus: (id: string, status: InvoiceStatus, method?: string) => Promise<void>;
-  onDeleteInvoice: (id: string) => Promise<void>;
+  onCancelInvoice?: (id: string, reason?: string) => Promise<void>;
+  onDeleteInvoice?: (id: string) => Promise<void>;
   onReminderSent?: (invoiceId: string, email: string) => Promise<void>;
   onUpdateClientEmail?: (clientId: string, email: string) => Promise<void>;
 }
@@ -46,6 +50,7 @@ export function InvoicesManager({
   onOpenNewInvoice,
   onPrintInvoice,
   onUpdateStatus,
+  onCancelInvoice,
   onDeleteInvoice,
   onReminderSent,
   onUpdateClientEmail,
@@ -55,6 +60,11 @@ export function InvoicesManager({
   const [monthFilter, setMonthFilter] = useState('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+
+  // Cancellation modal state (invoices cannot be deleted, only cancelled)
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [invoiceToCancel, setInvoiceToCancel] = useState<Invoice | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('Retificação de leitura do hidrómetro');
 
   // Email reminder modal state
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
@@ -72,21 +82,25 @@ export function InvoicesManager({
     return Array.from(set).sort().reverse();
   }, [invoices]);
 
-  // Overdue calculations based on current date
+  // Separate active invoices from cancelled invoices
+  const activeInvoices = useMemo(() => invoices.filter((i) => i.status !== 'cancelled'), [invoices]);
+  const cancelledCount = useMemo(() => invoices.filter((i) => i.status === 'cancelled').length, [invoices]);
+
+  // Overdue calculations based on current date (excludes cancelled)
   const overdueInvoices = useMemo(() => {
-    return invoices.filter((i) => isInvoiceOverdue(i, todayStr));
-  }, [invoices, todayStr]);
+    return activeInvoices.filter((i) => isInvoiceOverdue(i, todayStr));
+  }, [activeInvoices, todayStr]);
 
   const overdueCount = overdueInvoices.length;
   const overdueAmount = overdueInvoices.reduce((a, b) => a + (b.totalAmount || 0), 0);
 
   const pendingCount = useMemo(() => {
-    return invoices.filter((i) => i.status === 'pending' && !isInvoiceOverdue(i, todayStr)).length;
-  }, [invoices, todayStr]);
+    return activeInvoices.filter((i) => i.status === 'pending' && !isInvoiceOverdue(i, todayStr)).length;
+  }, [activeInvoices, todayStr]);
 
   const paidCount = useMemo(() => {
-    return invoices.filter((i) => i.status === 'paid').length;
-  }, [invoices]);
+    return activeInvoices.filter((i) => i.status === 'paid').length;
+  }, [activeInvoices]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter((i) => {
@@ -100,12 +114,16 @@ export function InvoicesManager({
       let matchesStatus = true;
       if (statusFilter === 'ALL') {
         matchesStatus = true;
+      } else if (statusFilter === 'active_only') {
+        matchesStatus = i.status !== 'cancelled';
+      } else if (statusFilter === 'cancelled') {
+        matchesStatus = i.status === 'cancelled';
       } else if (statusFilter === 'overdue') {
         matchesStatus = isInvoiceOverdue(i, todayStr);
       } else if (statusFilter === 'pending') {
         matchesStatus = i.status === 'pending' && !isInvoiceOverdue(i, todayStr);
       } else if (statusFilter === 'all_pending') {
-        matchesStatus = i.status === 'pending' || isInvoiceOverdue(i, todayStr);
+        matchesStatus = (i.status === 'pending' || isInvoiceOverdue(i, todayStr)) && i.status !== 'cancelled';
       } else if (statusFilter === 'paid') {
         matchesStatus = i.status === 'paid';
       } else {
@@ -117,6 +135,7 @@ export function InvoicesManager({
   }, [invoices, searchTerm, statusFilter, monthFilter, todayStr]);
 
   const handleTogglePaid = async (inv: Invoice) => {
+    if (inv.status === 'cancelled') return; // Cancelled invoices cannot be toggled
     const newStatus: InvoiceStatus = inv.status === 'paid' ? 'pending' : 'paid';
     const method = newStatus === 'paid' ? 'M-Pesa' : undefined;
     setProcessingId(inv.id);
@@ -127,14 +146,25 @@ export function InvoicesManager({
     }
   };
 
-  const handleDelete = async (inv: Invoice) => {
-    if (confirm(`Eliminar a fatura ${inv.invoiceNumber} do cliente ${inv.clientName}?`)) {
-      setProcessingId(inv.id);
-      try {
-        await onDeleteInvoice(inv.id);
-      } finally {
-        setProcessingId(null);
+  const handleOpenCancelModal = (inv: Invoice) => {
+    setInvoiceToCancel(inv);
+    setCancellationReason('Retificação de leitura do hidrómetro');
+    setCancelModalOpen(true);
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!invoiceToCancel) return;
+    setProcessingId(invoiceToCancel.id);
+    try {
+      if (onCancelInvoice) {
+        await onCancelInvoice(invoiceToCancel.id, cancellationReason.trim() || 'Cancelada no sistema');
+      } else if (onDeleteInvoice) {
+        await onDeleteInvoice(invoiceToCancel.id);
       }
+      setCancelModalOpen(false);
+      setInvoiceToCancel(null);
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -200,11 +230,11 @@ export function InvoicesManager({
         inv.subtotal.toFixed(2),
         inv.fixedFee.toFixed(2),
         inv.totalAmount.toFixed(2),
-        `"${inv.status === 'paid' ? 'Pago' : overdue ? 'Vencido' : 'Pendente'}"`,
+        `"${inv.status === 'paid' ? 'Pago' : inv.status === 'cancelled' ? 'Cancelada' : overdue ? 'Vencido' : 'Pendente'}"`,
         `"${inv.reminderSentAt ? inv.reminderSentAt.substring(0, 19).replace('T', ' ') : ''}"`,
         `"${inv.paidAt ? inv.paidAt.substring(0, 10) : ''}"`,
         `"${inv.paymentMethod || ''}"`,
-        `"${(inv.notes || '').replace(/"/g, '""')}"`,
+        `"${(inv.cancellationReason ? `[Cancelada: ${inv.cancellationReason}] ` : '') + (inv.notes || '').replace(/"/g, '""')}"`,
       ];
     });
 
@@ -222,10 +252,11 @@ export function InvoicesManager({
     URL.revokeObjectURL(url);
   };
 
-  // Summary of filtered invoices
-  const totalVolume = filteredInvoices.reduce((a, b) => a + (b.consumptionM3 || 0), 0);
-  const totalAmount = filteredInvoices.reduce((a, b) => a + (b.totalAmount || 0), 0);
-  const totalPaid = filteredInvoices
+  // Summary of filtered active invoices (excluding cancelled ones)
+  const activeFiltered = filteredInvoices.filter((i) => i.status !== 'cancelled');
+  const totalVolume = activeFiltered.reduce((a, b) => a + (b.consumptionM3 || 0), 0);
+  const totalAmount = activeFiltered.reduce((a, b) => a + (b.totalAmount || 0), 0);
+  const totalPaid = activeFiltered
     .filter((i) => i.status === 'paid')
     .reduce((a, b) => a + (b.totalAmount || 0), 0);
 
@@ -237,7 +268,7 @@ export function InvoicesManager({
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-black text-slate-900">Faturamento & Cobranças de Água</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800">
-              {invoices.length} Emitidas
+              {invoices.length} Registadas
             </span>
             {overdueCount > 0 && (
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
@@ -245,9 +276,15 @@ export function InvoicesManager({
                 <span>{overdueCount} em Atraso</span>
               </span>
             )}
+            {cancelledCount > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 flex items-center gap-1">
+                <Ban className="w-3 h-3 text-slate-500" />
+                <span>{cancelledCount} Canceladas</span>
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Controlo de consumo em m³, destaque visual de faturas vencidas e envio de lembretes por email
+            Numeração padronizada (ex: 0012026), arquivo fiscal protegido contra eliminação e cobranças de água
           </p>
         </div>
 
@@ -279,6 +316,26 @@ export function InvoicesManager({
             <span>Nova Fatura (m³)</span>
           </button>
         </div>
+      </div>
+
+      {/* Audit & Compliance Policy Callout */}
+      <div className="bg-sky-50/80 border border-sky-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-sky-950 gap-3 shadow-2xs">
+        <div className="flex items-start sm:items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div className="leading-relaxed">
+            <span className="font-bold block text-slate-900">
+              Conformidade Contábil: Registo Contínuo e Auditável de Faturas
+            </span>
+            <span className="text-[11px] text-slate-600">
+              O número da fatura segue o padrão oficial (Nº e ano fiscal, ex: <strong>0012026</strong>). Por segurança jurídica e auditoria, as faturas <strong>não podem ser apagadas do sistema</strong>, apenas canceladas formalmente.
+            </span>
+          </div>
+        </div>
+        <span className="px-2.5 py-1 rounded-lg bg-white border border-sky-200 text-sky-800 text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap self-start sm:self-auto shadow-2xs">
+          processado por computador
+        </span>
       </div>
 
       {/* Metric Cards including Overdue Highlight Card */}
@@ -409,6 +466,20 @@ export function InvoicesManager({
           <CheckCircle2 className="w-3.5 h-3.5" />
           <span>Pagas ({paidCount})</span>
         </button>
+
+        {cancelledCount > 0 && (
+          <button
+            onClick={() => setStatusFilter(statusFilter === 'cancelled' ? 'ALL' : 'cancelled')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              statusFilter === 'cancelled'
+                ? 'bg-slate-700 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+            }`}
+          >
+            <Ban className="w-3.5 h-3.5 text-slate-500" />
+            <span>Canceladas ({cancelledCount})</span>
+          </button>
+        )}
       </div>
 
       {/* Filters Bar */}
@@ -445,11 +516,13 @@ export function InvoicesManager({
             onChange={(e) => setStatusFilter(e.target.value)}
             className="w-full text-xs py-2.5 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 bg-white font-medium"
           >
-            <option value="ALL">Filtro: Todos os Estados</option>
-            <option value="overdue">⚠️ Apenas Vencidas (Em Atraso)</option>
-            <option value="pending">⏳ Apenas Pendentes no Prazo</option>
-            <option value="all_pending">📋 Todas as Pendentes (Vencidas + No Prazo)</option>
-            <option value="paid">✅ Pagas (Liquidadas)</option>
+            <option value="ALL">Filtro: Todas as Faturas ({invoices.length})</option>
+            <option value="active_only">Ativas / Sem Canceladas ({activeInvoices.length})</option>
+            <option value="overdue">⚠️ Apenas Vencidas (Em Atraso) ({overdueCount})</option>
+            <option value="pending">⏳ Apenas Pendentes no Prazo ({pendingCount})</option>
+            <option value="all_pending">📋 Todas as Pendentes ({pendingCount + overdueCount})</option>
+            <option value="paid">✅ Pagas / Liquidadas ({paidCount})</option>
+            <option value="cancelled">🚫 Canceladas ({cancelledCount})</option>
           </select>
         </div>
       </div>
@@ -487,11 +560,15 @@ export function InvoicesManager({
                   const overdue = isInvoiceOverdue(inv, todayStr);
                   const daysOverdue = overdue ? getDaysOverdue(inv.dueDate, todayStr) : 0;
 
+                  const isCancelled = inv.status === 'cancelled';
+
                   return (
                     <tr
                       key={inv.id}
                       className={`transition-colors ${
-                        overdue
+                        isCancelled
+                          ? 'bg-slate-50/90 text-slate-500 opacity-80'
+                          : overdue
                           ? 'bg-rose-50/70 hover:bg-rose-100/60 border-l-4 border-l-rose-500'
                           : 'hover:bg-sky-50/40'
                       }`}
@@ -499,14 +576,20 @@ export function InvoicesManager({
                       {/* Fatura */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-sky-800 text-xs">
+                          <span className={`font-mono font-bold text-xs ${
+                            isCancelled ? 'text-slate-500 line-through' : 'text-sky-800'
+                          }`}>
                             {inv.invoiceNumber}
                           </span>
-                          {overdue && (
+                          {isCancelled ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-200 text-slate-700 uppercase tracking-tight border border-slate-300">
+                              Cancelada
+                            </span>
+                          ) : overdue ? (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white uppercase tracking-tight">
                               Atraso
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
                           Mês: <strong>{inv.periodMonth}</strong>
@@ -515,14 +598,16 @@ export function InvoicesManager({
 
                       {/* Cliente */}
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 text-xs">{inv.clientName}</div>
+                        <div className={`font-bold text-xs ${isCancelled ? 'text-slate-600' : 'text-slate-900'}`}>
+                          {inv.clientName}
+                        </div>
                         <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
                           <span>Contador: {inv.meterNumber}</span>
                           {inv.clientEmail && (
                             <span className="text-slate-400 font-sans">({inv.clientEmail})</span>
                           )}
                         </div>
-                        {inv.reminderSentAt && (
+                        {inv.reminderSentAt && !isCancelled && (
                           <div className="mt-1">
                             <span
                               title={`Lembrete enviado em ${new Date(inv.reminderSentAt).toLocaleString('pt-MZ')}`}
@@ -533,6 +618,11 @@ export function InvoicesManager({
                             </span>
                           </div>
                         )}
+                        {isCancelled && inv.cancellationReason && (
+                          <div className="mt-1 text-[10px] text-rose-700 italic">
+                            Motivo: {inv.cancellationReason}
+                          </div>
+                        )}
                       </td>
 
                       {/* Vencimento e Destaque de Atraso */}
@@ -540,12 +630,20 @@ export function InvoicesManager({
                         <div className="flex flex-col items-center">
                           <span
                             className={`text-xs font-semibold ${
-                              overdue ? 'text-rose-700 font-bold' : 'text-slate-700'
+                              isCancelled
+                                ? 'text-slate-400'
+                                : overdue
+                                ? 'text-rose-700 font-bold'
+                                : 'text-slate-700'
                             }`}
                           >
                             {inv.dueDate || 'N/D'}
                           </span>
-                          {overdue ? (
+                          {isCancelled ? (
+                            <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                              Sem efeito fiscal
+                            </span>
+                          ) : overdue ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-600 mt-0.5">
                               <AlertTriangle className="w-3 h-3 text-rose-500" />
                               <span>{daysOverdue} dias em atraso</span>
@@ -570,7 +668,7 @@ export function InvoicesManager({
 
                       {/* Consumo */}
                       <td className="py-3.5 px-4 text-center">
-                        <div className="font-black text-sky-900 text-sm">
+                        <div className={`font-black text-sm ${isCancelled ? 'text-slate-500' : 'text-sky-900'}`}>
                           {inv.consumptionM3} <span className="text-[10px] text-slate-500 font-normal">m³</span>
                         </div>
                       </td>
@@ -584,7 +682,9 @@ export function InvoicesManager({
 
                       {/* Total */}
                       <td className="py-3.5 px-4 text-right">
-                        <div className="font-black text-slate-900 text-sm">
+                        <div className={`font-black text-sm ${
+                          isCancelled ? 'text-slate-400 line-through' : 'text-slate-900'
+                        }`}>
                           {inv.totalAmount.toLocaleString('pt-MZ', { minimumFractionDigits: 2 })}{' '}
                           {settings.currency}
                         </div>
@@ -597,78 +697,101 @@ export function InvoicesManager({
 
                       {/* Estado */}
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleTogglePaid(inv)}
-                          disabled={processingId === inv.id}
-                          title="Clique para alternar entre Pago e Pendente"
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-transform hover:scale-105 ${
-                            inv.status === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : overdue
-                              ? 'bg-rose-100 text-rose-800 border border-rose-300 font-black ring-1 ring-rose-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-300'
-                          }`}
-                        >
-                          {inv.status === 'paid' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>PAGO ({inv.paymentMethod || 'OK'})</span>
-                            </>
-                          ) : overdue ? (
-                            <>
-                              <AlertTriangle className="w-3 h-3 text-rose-600" />
-                              <span>VENCIDA ({daysOverdue}d)</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              <span>PENDENTE</span>
-                            </>
-                          )}
-                        </button>
+                        {isCancelled ? (
+                          <span
+                            title={`Fatura cancelada: ${inv.cancellationReason || 'Cancelada no sistema'}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300"
+                          >
+                            <Ban className="w-3 h-3 text-slate-500" />
+                            <span>CANCELADA</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleTogglePaid(inv)}
+                            disabled={processingId === inv.id}
+                            title="Clique para alternar entre Pago e Pendente"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-transform hover:scale-105 ${
+                              inv.status === 'paid'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : overdue
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300 font-black ring-1 ring-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}
+                          >
+                            {inv.status === 'paid' ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>PAGO ({inv.paymentMethod || 'OK'})</span>
+                              </>
+                            ) : overdue ? (
+                              <>
+                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                <span>VENCIDA ({daysOverdue}d)</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>PENDENTE</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                       </td>
 
                       {/* Ações */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Botão Enviar Lembrete por Email */}
-                          <button
-                            onClick={() => handleOpenReminder(inv)}
-                            title={
-                              inv.status === 'paid'
-                                ? 'Enviar recibo / confirmação por email ao cliente'
-                                : overdue
-                                ? 'Enviar notificação de cobrança de fatura em atraso por email'
-                                : 'Enviar lembrete de pagamento por email ao cliente'
-                            }
-                            className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                              overdue
-                                ? 'bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 shadow-2xs'
-                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
-                            }`}
-                          >
-                            <Mail className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="hidden md:inline">Lembrete</span>
-                          </button>
+                          {!isCancelled && (
+                            <button
+                              onClick={() => handleOpenReminder(inv)}
+                              title={
+                                inv.status === 'paid'
+                                  ? 'Enviar recibo / confirmação por email ao cliente'
+                                  : overdue
+                                  ? 'Enviar notificação de cobrança de fatura em atraso por email'
+                                  : 'Enviar lembrete de pagamento por email ao cliente'
+                              }
+                              className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                overdue
+                                  ? 'bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 shadow-2xs'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                              }`}
+                            >
+                              <Mail className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="hidden md:inline">Lembrete</span>
+                            </button>
+                          )}
 
-                          {/* Botão Imprimir / Ver Fatura */}
+                          {/* Botão Baixar / Ver Fatura */}
                           <button
                             onClick={() => onPrintInvoice(inv)}
-                            title="Imprimir Fatura / Ver Recibo Oficial"
-                            className="p-1.5 text-sky-700 hover:text-sky-900 hover:bg-sky-100 rounded-lg transition-colors border border-sky-200 cursor-pointer"
+                            title="Baixar Fatura (PDF / HTML) ou Imprimir"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sky-800 hover:text-white hover:bg-sky-600 bg-sky-50 rounded-lg transition-all border border-sky-200 text-xs font-bold cursor-pointer shadow-2xs hover:shadow-xs"
                           >
-                            <Printer className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Baixar / Ver</span>
                           </button>
 
-                          {/* Botão Eliminar */}
-                          <button
-                            onClick={() => handleDelete(inv)}
-                            disabled={processingId === inv.id}
-                            title="Eliminar Fatura"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {/* Botão Cancelar Fatura (Faturas não podem ser apagadas, apenas canceladas) */}
+                          {isCancelled ? (
+                            <span
+                              title={`Fatura já cancelada no sistema (${inv.cancelledAt ? new Date(inv.cancelledAt).toLocaleDateString('pt-MZ') : 'data anterior'}) - Mantida no arquivo para auditoria`}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-slate-400 bg-slate-100 border border-slate-200 cursor-not-allowed text-xs"
+                            >
+                              <Ban className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="hidden lg:inline text-[10px]">Cancelada</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenCancelModal(inv)}
+                              disabled={processingId === inv.id}
+                              title="Cancelar Fatura (por lei, faturas não podem ser apagadas do sistema, apenas canceladas)"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
+                            >
+                              <Ban className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -676,6 +799,11 @@ export function InvoicesManager({
                 })}
               </tbody>
             </table>
+
+            {/* Rodapé Fiscal Obrigatório */}
+            <div className="text-center text-xs font-semibold tracking-wider uppercase text-slate-400 py-3 border-t border-slate-200 bg-slate-50/40">
+              processado por computador
+            </div>
           </div>
         )}
       </div>
@@ -702,6 +830,117 @@ export function InvoicesManager({
         onReminderSent={onReminderSent}
         onUpdateClientEmail={onUpdateClientEmail}
       />
+
+      {/* Invoice Cancellation Modal (Invoices cannot be deleted, only cancelled) */}
+      {cancelModalOpen && invoiceToCancel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-rose-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-rose-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-xs">
+                  <Ban className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Cancelar Fatura de Água</h3>
+                  <p className="text-[11px] text-rose-700">
+                    Fatura nº <strong className="font-mono">{invoiceToCancel.invoiceNumber}</strong> • {invoiceToCancel.clientName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setCancelModalOpen(false);
+                  setInvoiceToCancel(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {/* Compliance & Audit Policy Warning */}
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong className="block font-bold">Documento protegido contra eliminação:</strong>
+                  Por conformidade regulamentar e fiscal, as faturas de água <strong>não podem ser apagadas do sistema</strong>, apenas canceladas formalmente. O registo é preservado no histórico de auditoria com estado &quot;Cancelada&quot;.
+                </div>
+              </div>
+
+              {/* Invoice details recap */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Valor da Fatura:</span>
+                  <span className="font-black font-mono text-slate-900 text-sm">
+                    {invoiceToCancel.totalAmount.toLocaleString('pt-MZ', { minimumFractionDigits: 2 })} {settings.currency}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-500">Mês de Referência:</span>
+                  <span className="font-bold text-slate-800">{invoiceToCancel.periodMonth}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-500">Hidrómetro do Cliente:</span>
+                  <span className="font-mono text-slate-800">{invoiceToCancel.meterNumber}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-500">Volume Faturado:</span>
+                  <span className="font-semibold text-slate-800">{invoiceToCancel.consumptionM3} m³</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Motivo Formal do Cancelamento *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="Ex: Erro de introdução na leitura do hidrómetro; Emissão em duplicado; Substituída por refaturação correta..."
+                  className="w-full text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 bg-white"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  O motivo ficará gravado no registo da fatura para efeito de consulta fiscal e auditoria.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">
+                  processado por computador
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCancelModalOpen(false);
+                      setInvoiceToCancel(null);
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!cancellationReason.trim() || processingId === invoiceToCancel.id}
+                    onClick={handleConfirmCancellation}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {processingId === invoiceToCancel.id ? (
+                      <span className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Ban className="w-3.5 h-3.5" />
+                    )}
+                    <span>Confirmar Cancelamento</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

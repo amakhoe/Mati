@@ -29,12 +29,12 @@ service cloud.firestore {
       allow delete: if isValidId(clientId) && isSignedIn();
     }
 
-    // Faturas de Água
+    // Faturas de Água (Não podem ser apagadas do sistema, apenas canceladas para conformidade legal e auditoria)
     match /invoices/{invoiceId} {
       allow get: if isValidId(invoiceId);
       allow list: if true;
       allow create, update: if isValidId(invoiceId);
-      allow delete: if isValidId(invoiceId) && isSignedIn();
+      allow delete: if false; // Faturas não podem ser apagadas do sistema, apenas canceladas
     }
 
     // Registos de Bombeamento e Consumo dos Postos de Abastecimento

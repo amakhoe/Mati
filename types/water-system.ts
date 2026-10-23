@@ -23,7 +23,7 @@ export type InvoiceStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 
 export interface Invoice {
   id: string;
-  invoiceNumber: string;
+  invoiceNumber: string; // Formato oficial: número e ano (ex: 0012026)
   clientId: string;
   clientName: string;
   clientEmail?: string; // Email do cliente para notificações
@@ -46,6 +46,67 @@ export interface Invoice {
   createdBy?: string;
   reminderSentAt?: string; // Data e hora do último lembrete enviado
   reminderCount?: number; // Contagem de lembretes enviados
+  cancelledAt?: string; // Data e hora do cancelamento (faturas não podem ser apagadas)
+  cancellationReason?: string; // Motivo do cancelamento formal
+  cancelledBy?: string; // Operador/Utilizador que cancelou
+}
+
+/**
+ * Formats sequence number and year into the requested pattern:
+ * (número da fatura e ano ex: 0012026)
+ */
+export function formatInvoiceNumber(sequence: number, year: number): string {
+  const padded = String(Math.max(1, sequence)).padStart(3, '0');
+  return `${padded}${year}`;
+}
+
+/**
+ * Parses an invoice number string to extract its sequence number and year.
+ * Handles both the standard format (e.g. 0012026) and legacy formats (e.g. FAT-MAN-2026-001)
+ */
+export function parseInvoiceNumber(invoiceNum: string): { sequence: number; year: number } | null {
+  if (!invoiceNum) return null;
+  const trimmed = invoiceNum.trim();
+  // Standard format: sequence + 4-digit year (ex: 0012026, 0152026, 1202026)
+  const standardMatch = trimmed.match(/^(\d{1,6})(\d{4})$/);
+  if (standardMatch) {
+    return {
+      sequence: parseInt(standardMatch[1], 10),
+      year: parseInt(standardMatch[2], 10),
+    };
+  }
+
+  // Legacy prefix match (ex: FAT-MAN-2026-001 or FAT-2026-001)
+  const legacyMatch = trimmed.match(/(\d{4})[^\d]*(\d+)/);
+  if (legacyMatch) {
+    return {
+      sequence: parseInt(legacyMatch[2], 10),
+      year: parseInt(legacyMatch[1], 10),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Calculates the next sequential invoice number in the format 0012026
+ * based on existing invoices in the system for the given year.
+ */
+export function getNextInvoiceNumber(existingInvoices: Invoice[], targetYear?: number): string {
+  const year = targetYear || new Date().getFullYear();
+  let maxSeq = 0;
+
+  for (const inv of existingInvoices) {
+    if (!inv || !inv.invoiceNumber) continue;
+    const parsed = parseInvoiceNumber(inv.invoiceNumber);
+    if (parsed && parsed.year === year) {
+      if (parsed.sequence > maxSeq) {
+        maxSeq = parsed.sequence;
+      }
+    }
+  }
+
+  return formatInvoiceNumber(maxSeq + 1, year);
 }
 
 /**

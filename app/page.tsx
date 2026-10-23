@@ -21,6 +21,7 @@ import {
   subscribeInvoices,
   createInvoice,
   updateInvoiceStatus,
+  cancelInvoice,
   deleteInvoice,
   recordInvoiceReminder,
   subscribeStationConsumptions,
@@ -166,9 +167,14 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
     notify(status === 'paid' ? 'Fatura marcada como PAGA.' : 'Fatura marcada como PENDENTE.');
   };
 
+  const handleCancelInvoice = async (id: string, reason?: string) => {
+    await cancelInvoice(id, reason, user.email || undefined);
+    notify('Fatura cancelada com sucesso. O registo é preservado no histórico para fins fiscais e de auditoria.');
+  };
+
   const handleDeleteInvoice = async (id: string) => {
-    await deleteInvoice(id);
-    notify('Fatura eliminada.');
+    // Por determinação do sistema, as faturas não podem ser apagadas, apenas canceladas.
+    await handleCancelInvoice(id, 'Cancelamento formal pelo operador');
   };
 
   const handlePrintInvoice = (inv: Invoice) => {
@@ -370,6 +376,7 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
             }}
             onPrintInvoice={handlePrintInvoice}
             onUpdateStatus={handleUpdateInvoiceStatus}
+            onCancelInvoice={handleCancelInvoice}
             onDeleteInvoice={handleDeleteInvoice}
             onReminderSent={handleReminderSent}
             onUpdateClientEmail={handleUpdateClientEmail}
@@ -410,8 +417,11 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
             <Droplets className="w-4 h-4 text-sky-600" />
             <span>Águas da Manhiça • Sistema Integrado de Gestão de Abastecimento</span>
           </div>
-          <div>
-            Comunidade da Manhiça, Província de Maputo • Moçambique
+          <div className="flex items-center gap-4 text-slate-400">
+            <span>Comunidade da Manhiça, Província de Maputo • Moçambique</span>
+            <span className="font-mono text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+              processado por computador
+            </span>
           </div>
         </div>
       </footer>
@@ -431,6 +441,7 @@ function AuthenticatedWaterApp({ user }: { user: AppUser }) {
         onClose={() => setInvoiceModalOpen(false)}
         onSave={handleSaveInvoice}
         clients={clients}
+        invoices={invoices}
         settings={settings}
         preselectedClient={preselectedClient}
       />

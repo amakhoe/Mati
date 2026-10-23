@@ -134,7 +134,10 @@ Nota: Se já efetuou a liquidação desta fatura nas últimas 24 horas, solicita
 Com os melhores cumprimentos,
 ${settings.companyName || 'Águas da Manhiça'}
 Gestão de Abastecimento de Água - Bairros de Manhiça
-Email: ${settings.companyEmail || 'contacto@aguasmanhica.co.mz'}`;
+Email: ${settings.companyEmail || 'contacto@aguasmanhica.co.mz'}
+
+--------------------------------------------------
+processado por computador`;
   };
 
   const [messageBody, setMessageBody] = useState(generateDefaultBody);
@@ -419,6 +422,10 @@ Email: ${settings.companyEmail || 'contacto@aguasmanhica.co.mz'}`;
                 )}
               </button>
             </div>
+          </div>
+
+          <div className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest pt-1">
+            processado por computador
           </div>
         </form>
       </div>

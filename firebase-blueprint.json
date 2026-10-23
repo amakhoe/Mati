@@ -66,6 +66,9 @@
         "paymentMethod": { "type": "string", "maxLength": 50 },
         "reminderSentAt": { "type": "string", "maxLength": 40 },
         "reminderCount": { "type": "number" },
+        "cancelledAt": { "type": "string", "maxLength": 40 },
+        "cancellationReason": { "type": "string", "maxLength": 300 },
+        "cancelledBy": { "type": "string", "maxLength": 120 },
         "notes": { "type": "string", "maxLength": 500 },
         "createdAt": { "type": "string" },
         "createdBy": { "type": "string" }

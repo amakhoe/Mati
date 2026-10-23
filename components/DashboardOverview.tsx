@@ -60,9 +60,9 @@ export function DashboardOverview({
 }: DashboardOverviewProps) {
   const currentMonth = new Date().toISOString().substring(0, 7);
 
-  // Stats calculation
+  // Stats calculation (excludes cancelled invoices)
   const activeClientsCount = clients.filter((c) => c.status === 'active').length;
-  const currentMonthInvoices = invoices.filter((i) => i.periodMonth === currentMonth);
+  const currentMonthInvoices = invoices.filter((i) => i.periodMonth === currentMonth && i.status !== 'cancelled');
 
   const totalInvoicedM3 = currentMonthInvoices.reduce((acc, curr) => acc + (curr.consumptionM3 || 0), 0);
   const totalBilledMT = currentMonthInvoices.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
@@ -70,7 +70,10 @@ export function DashboardOverview({
     .filter((i) => i.status === 'paid' && i.periodMonth === currentMonth)
     .reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
   const pendingInvoices = invoices.filter((i) => i.status === 'pending');
-  const overdueInvoices = useMemo(() => invoices.filter((i) => isInvoiceOverdue(i)), [invoices]);
+  const overdueInvoices = useMemo(
+    () => invoices.filter((i) => i.status !== 'cancelled' && isInvoiceOverdue(i)),
+    [invoices]
+  );
   const overdueTotalAmount = useMemo(
     () => overdueInvoices.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0),
     [overdueInvoices]
